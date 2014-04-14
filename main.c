@@ -72,7 +72,7 @@ void printDesc(segment_descriptors* desc){
     printf("---------------------------------------------\n");
     printf("Base :\t0x%x\t\t(%u)\n", base, base);
     printf("Limit:\t0x%x\t\t(%u)\t", limit, limit);
-    printf("%s\n", desc->granularity?"4kB pages":"bytes");
+    printf("%s\n", desc->granularity?"4kiB blocks":"bytes      ");
     if(desc->descriptor_type){
         printf("Type :\t%s\t", desc->type&8?"Code":"Data");
         if(desc->type&8){
@@ -92,17 +92,56 @@ rtems_task Init(rtems_task_argument ignored)
     segment_descriptors*        gdt_entry_tbl;
     uint16_t                    segment_selector;
 
-    printf("%d", GDT_SIZE);
+    uint16_t                    seg_sel1, seg_sel;
+
     i386_get_info_from_GDTR (&gdt_entry_tbl, &gdt_limit);
+
+    segment_descriptors tst1 = {
+        .type                = 0xC,      /* bits 4  */
+        .descriptor_type     = 0x1,      /* bits 1  */
+        .privilege           = 0x0,      /* bits 2  */
+        .present             = 0x1,      /* bits 1  */
+        .available           = 0x0,      /* bits 1  */
+        .fixed_value_bits    = 0x0,      /* bits 1  */
+        .operation_size      = 0x1,      /* bits 1  */
+    };
+
+    segment_descriptors test = {
+        .limit_15_0          = 0x0000,   /* bits 16 */
+        .base_address_15_0   = 0x0000,   /* bits 16 */
+        .base_address_23_16  = 0x00,     /* bits 8  */
+        .type                = 0x0,      /* bits 4  */
+        .descriptor_type     = 0x1,      /* bits 1  */
+        .privilege           = 0x0,      /* bits 2  */
+        .present             = 0x1,      /* bits 1  */
+        .limit_19_16         = 0x0,      /* bits 4  */
+        .available           = 0x0,      /* bits 1  */
+        .fixed_value_bits    = 0x0,      /* bits 1  */
+        .operation_size      = 0x0,      /* bits 1  */
+        .granularity         = 0x0,      /* bits 1  */
+        .base_address_31_24  = 0x00,     /* bits 8  */
+    };
+
+    if(!i386_put_gdt_entry (seg_sel=i386_find_empty_gdt_entry(), 0xff00ff00, 0x0f0f0f, &test)){printk("error inserting descriptor");exit(1);}
+
+    if(!i386_put_gdt_entry (seg_sel1=i386_find_empty_gdt_entry(), 0xC0000, 0x0fffff, &tst1)){printk("error inserting descriptor");exit(1);}
+
+    if(i386_free_gdt_entry(seg_sel))printk("couldn't free gdt entry\n");
+
+    printf("%d", GDT_SIZE);
     printf("GDT position: %p\tGDT limit: %d\n", gdt_entry_tbl, gdt_limit);
     for(segment_selector=0;segment_selector<(gdt_limit+1)/8;segment_selector++){
         printf("(%d)", segment_selector);
         printDesc(&gdt_entry_tbl[segment_selector]);
         _IBMPC_inch();
     }
+    if(!i386_put_gdt_entry (seg_sel=i386_find_empty_gdt_entry(), 0xccccc0, 0x0111, &test)){printk("error inserting descriptor");exit(1);}
+    for(segment_selector=0;segment_selector<(gdt_limit+1)/8;segment_selector++){
+        printf("(%d)", segment_selector);
+        printDesc(&gdt_entry_tbl[segment_selector]);
+        _IBMPC_inch();
+    }
     
-//    i386_put_gdt_entry (unsigned short segment_selector, unsigned int base, 
-//                        unsigned int limit, segment_descriptors* sd_flags);
     exit(0);
 }
 
